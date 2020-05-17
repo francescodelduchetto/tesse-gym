@@ -25,6 +25,8 @@ import defusedxml.ElementTree as ET
 import numpy as np
 from gym import spaces
 
+from scipy.spatial import distance
+
 from tesse.msgs import (
     Camera,
     Channels,
@@ -39,6 +41,9 @@ from tesse.msgs import (
 )
 from tesse_gym.core.tesse_gym import TesseGym
 from tesse_gym.core.utils import NetworkConfig, set_all_camera_params
+
+
+import matplotlib.pyplot as plt
 
 
 # define custom message to signal episode reset
@@ -105,6 +110,11 @@ class GoSeek(TesseGym):
         self.n_found_targets = 0
         self.n_target_types = n_target_types
 
+        # ######
+        # self.point_set = np.array([[0., 0.]])
+        # self.scene_id = scene_id
+        # ######
+        
     @property
     def action_space(self) -> spaces.Discrete:
         """ Actions available to agent. """
@@ -136,6 +146,11 @@ class GoSeek(TesseGym):
             np.ndarray: Agent's observation. """
         self.env.send(EpisodeResetSignal())
         super().reset(scene_id, random_seed)
+        
+        # ######
+        # if scene_id is not None:
+        #     self.scene_id = scene_id
+        # ######
 
         self.env.request(RemoveObjectsRequest())
         self.n_found_targets = 0
@@ -150,24 +165,37 @@ class GoSeek(TesseGym):
         if not self.ground_truth_mode:
             self.advance_game_time(1)
 
+        # ######
+        # # reset convex_hull
+        # self.point_set = np.array([[0., 0.]])
+        # plt.figure()
+        # plt.scatter(self.point_set[:, 0], self.point_set[:, 1])
+        # np.savetxt("/tmp/last_pointset_" +
+        #            str(self.scene_id) + ".txt", self.point_set)
+        # plt.savefig("/tmp/" + str(self.scene_id) + "_" + str(self.point_set.shape[0]) + ".png")
+        # ######
+
         observation = self.get_synced_observation()
-        ####
-        targets = self.env.request(ObjectsRequest())
-        target_ids, target_position = self._get_target_id_and_positions(
-            targets.metadata
-        )
-        agent_metadata = (
-            observation.metadata
-            if self.ground_truth_mode
-            else self.continuous_controller.get_broadcast_metadata()
-        )
-        agent_position = self._get_agent_position(agent_metadata)
-        agent_position = agent_position[np.newaxis, (0, 2)]
-        target_position = target_position[:, (0, 2)]
-        dists = np.linalg.norm(target_position - agent_position, axis=-1)
-        targets_in_range = target_ids[dists < 10]
-        self.env.request(RemoveObjectsRequest(ids=targets_in_range))
-        ####
+
+        ###
+        # remove fruits in the starting room in 1/3 of the episodes
+        if np.random.choice([0, 0, 1]):
+            targets = self.env.request(ObjectsRequest())
+            target_ids, target_position = self._get_target_id_and_positions(
+                targets.metadata
+            )
+            agent_metadata = (
+                observation.metadata
+                if self.ground_truth_mode
+                else self.continuous_controller.get_broadcast_metadata()
+            )
+            agent_position = self._get_agent_position(agent_metadata)
+            agent_position = agent_position[np.newaxis, (0, 2)]
+            target_position = target_position[:, (0, 2)]
+            dists = np.linalg.norm(target_position - agent_position, axis=-1)
+            targets_in_range = target_ids[dists < 10]
+            self.env.request(RemoveObjectsRequest(ids=targets_in_range))
+        ###
 
         return self.form_agent_observation(observation)
 
@@ -254,10 +282,32 @@ class GoSeek(TesseGym):
         self.steps += 1
         if self.steps > self.episode_length:
             self.done = True
+        #####
+        if action == 0:
+            reward += 0.01
+        elif action == 3:
+            reward -= 0.01
+        #####
+        # #####
+        # # add reward coefficient to incentivate exploration
+        # if action == 0:
+        #     pose = agent_position[:2].reshape((1, 2))
+        #     np.savetxt("/tmp/last_pose_" + str(self.scene_id) + ".txt", pose)
+        #     # is pose more distant than 2 metres than nay else?
+        #     if (distance.cdist(pose, self.point_set) > 2.).all():
+        #         reward += 0.2
+        #         self.point_set = np.concatenate((self.point_set, pose), axis=0)
+        #         plt.scatter(self.point_set[:, 0], self.point_set[:, 1])
+        #         plt.savefig("/tmp/" + str(self.scene_id) + "_" +
+        #             str(self.point_set.shape[0]) + ".png")
+        #         np.savetxt("/tmp/last_pointset_" +
+        #                    str(self.scene_id) + ".txt", self.point_set)
+        # #####
 
         # collision information isn't provided by the controller metadata
         if self._collision(observation.metadata):
             reward_info["collision"] = True
+            reward -= 0.02
 
             if self.restart_on_collision:
                 self.done = True
