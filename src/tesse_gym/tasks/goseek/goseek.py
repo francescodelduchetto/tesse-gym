@@ -151,6 +151,24 @@ class GoSeek(TesseGym):
             self.advance_game_time(1)
 
         observation = self.get_synced_observation()
+        ####
+        targets = self.env.request(ObjectsRequest())
+        target_ids, target_position = self._get_target_id_and_positions(
+            targets.metadata
+        )
+        agent_metadata = (
+            observation.metadata
+            if self.ground_truth_mode
+            else self.continuous_controller.get_broadcast_metadata()
+        )
+        agent_position = self._get_agent_position(agent_metadata)
+        agent_position = agent_position[np.newaxis, (0, 2)]
+        target_position = target_position[:, (0, 2)]
+        dists = np.linalg.norm(target_position - agent_position, axis=-1)
+        targets_in_range = target_ids[dists < 10]
+        self.env.request(RemoveObjectsRequest(ids=targets_in_range))
+        ####
+
         return self.form_agent_observation(observation)
 
     def apply_action(self, action: int) -> None:
@@ -195,6 +213,8 @@ class GoSeek(TesseGym):
         """
         targets = self.env.request(ObjectsRequest())
 
+        print("targets.metadata", targets.metadata)
+
         # If not in ground truth mode, metadata will only provide position estimates
         # In that case, get ground truth metadata from the controller
         agent_metadata = (
@@ -202,6 +222,7 @@ class GoSeek(TesseGym):
             if self.ground_truth_mode
             else self.continuous_controller.get_broadcast_metadata()
         )
+        print("observation.metadata", observation.metadata)
         reward_info = {"env_changed": False, "collision": False, "n_found_targets": 0}
 
         # compute agent's distance from targets
