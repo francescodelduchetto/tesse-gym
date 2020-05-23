@@ -179,22 +179,22 @@ class GoSeek(TesseGym):
 
         ###
         # remove fruits in the starting room in 1/3 of the episodes
-        if np.random.choice([0, 0, 1]):
-            targets = self.env.request(ObjectsRequest())
-            target_ids, target_position = self._get_target_id_and_positions(
-                targets.metadata
-            )
-            agent_metadata = (
-                observation.metadata
-                if self.ground_truth_mode
-                else self.continuous_controller.get_broadcast_metadata()
-            )
-            agent_position = self._get_agent_position(agent_metadata)
-            agent_position = agent_position[np.newaxis, (0, 2)]
-            target_position = target_position[:, (0, 2)]
-            dists = np.linalg.norm(target_position - agent_position, axis=-1)
-            targets_in_range = target_ids[dists < 10]
-            self.env.request(RemoveObjectsRequest(ids=targets_in_range))
+        # if np.random.choice([0, 0, 1]):
+        #     targets = self.env.request(ObjectsRequest())
+        #     target_ids, target_position = self._get_target_id_and_positions(
+        #         targets.metadata
+        #     )
+        #     agent_metadata = (
+        #         observation.metadata
+        #         if self.ground_truth_mode
+        #         else self.continuous_controller.get_broadcast_metadata()
+        #     )
+        #     agent_position = self._get_agent_position(agent_metadata)
+        #     agent_position = agent_position[np.newaxis, (0, 2)]
+        #     target_position = target_position[:, (0, 2)]
+        #     dists = np.linalg.norm(target_position - agent_position, axis=-1)
+        #     targets_in_range = target_ids[dists < 10]
+        #     self.env.request(RemoveObjectsRequest(ids=targets_in_range))
         ###
 
         return self.form_agent_observation(observation)
@@ -285,6 +285,13 @@ class GoSeek(TesseGym):
         elif action == 3:
             reward -= 0.01
         #####
+        ##### progressive reward for going close to fruits
+        dists = self.get_target_distances(agent_position, target_position)
+        dist_coef = 0.
+        for dist in dists:
+            dist_coef += (11. - dist)/1000.
+            print(dists, dist_coef, reward, reward+dist_coef)
+        #####
         # #####
         # # add reward coefficient to incentivate exploration
         # if action == 0:
@@ -310,6 +317,19 @@ class GoSeek(TesseGym):
                 self.done = True
 
         return reward, reward_info
+
+    def get_target_distances(
+        self,
+        agent_position: np.ndarray,
+        target_position: np.ndarray,
+    ) -> np.ndarray:
+
+
+        agent_position = agent_position[np.newaxis, (0, 2)]
+        target_position = target_position[:, (0, 2)]
+        dists = np.linalg.norm(target_position - agent_position, axis=-1)
+
+        return dists
 
     def get_found_targets(
         self,
