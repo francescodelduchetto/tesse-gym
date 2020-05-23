@@ -241,6 +241,8 @@ class GoSeek(TesseGym):
         """
         targets = self.env.request(ObjectsRequest())
 
+        print("targets.metadata", targets.metadata)
+
         # If not in ground truth mode, metadata will only provide position estimates
         # In that case, get ground truth metadata from the controller
         agent_metadata = (
@@ -248,6 +250,7 @@ class GoSeek(TesseGym):
             if self.ground_truth_mode
             else self.continuous_controller.get_broadcast_metadata()
         )
+        print("observation.metadata", observation.metadata)
         reward_info = {"env_changed": False, "collision": False, "n_found_targets": 0}
 
         # compute agent's distance from targets

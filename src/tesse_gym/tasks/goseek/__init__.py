@@ -21,6 +21,7 @@
 
 from tesse_gym.tasks.goseek.goseek import GoSeek
 from tesse_gym.tasks.goseek.goseek_benchmark import GoSeekBenchmark
+from tesse_gym.tasks.goseek.goseek_keyboard import GoSeekKeyboard
 from tesse_gym.tasks.goseek.goseek_config import get_goseek_cfg_defaults
 from tesse_gym.tasks.goseek.goseek_full_perception import (
     GoSeekFullPerception,
@@ -31,6 +32,7 @@ __all__ = [
     "GoSeek",
     "GoSeekFullPerception",
     "GoSeekBenchmark",
+    "GoSeekKeyboard",
     "get_goseek_cfg_defaults",
     "decode_observations",
 ]
