@@ -26,6 +26,7 @@ from tesse_gym.core.utils import NetworkConfig
 from tesse_gym.eval.benchmark import Benchmark
 from tesse_gym.tasks.goseek.goseek_full_perception import GoSeekFullPerception
 
+import os
 import numpy as np
 import curses 
 import cv2
@@ -62,10 +63,10 @@ class GoSeekKeyboard(Benchmark):
             random_seeds (List[int]): Optional random seeds for each episode.
         """
         super().__init__()
-        self.scenes = scenes
-        self.episode_length = episode_length
+        self.scenes = np.random.randint(1, 6, 50)# scenes
+        self.episode_length = [400]*len(self.scenes)#episode_length
         self.random_seeds = random_seeds
-        self.n_targets = n_targets
+        self.n_targets = [30]*len(self.scenes)#n_targets
         self.env = GoSeekFullPerception(
             build_path=build_path,
             network_config=network_config,
@@ -76,6 +77,8 @@ class GoSeekKeyboard(Benchmark):
             step_rate=self.STEP_RATE,
             ground_truth_mode=ground_truth_mode,
         )
+        self.SHOW_MATPLOT = False
+        self.SAVE_OBSERVATIONS = True
 
     def evaluate(self) -> Dict[str, Dict[str, float]]:
         """ Evaluate keyboard agent.
@@ -107,9 +110,10 @@ class GoSeekKeyboard(Benchmark):
             curses.cbreak()
             stdscr.keypad(True)
             
-            img_q = Queue()
-            thread = Process(target=plot_thread, args=(img_q,))
-            thread.start()
+            if self.SHOW_MATPLOT:
+                img_q = Queue()
+                thread = Process(target=plot_thread, args=(img_q,))
+                thread.start()
             for episode in range(len(self.scenes)):
                 print(
                     f"Evaluation episode on episode {episode}, scene {self.scenes[episode]}"
@@ -125,18 +129,22 @@ class GoSeekKeyboard(Benchmark):
                 obs = self.env.reset(
                     scene_id=self.scenes[episode], random_seed=np.random.randint(0, 1000000)#self.random_seeds[episode]#
                 )
-                # plt.ion()
-                img_shape = (240, 320, 5)
-                imgs = np.reshape(obs[:-3], img_shape)
-                seg_img = cv2.resize(imgs[:, :, 3], (40, 40), interpolation=cv2.INTER_NEAREST)
-                img_q.put((seg_img, False))
-                
+                if self.SHOW_MATPLOT:
+                    # plt.ion()
+                    img_shape = (240, 320, 5)
+                    imgs = np.reshape(obs[:-3], img_shape)
+                    seg_img = cv2.resize(imgs[:, :, 3], (40, 40), interpolation=cv2.INTER_NEAREST)
+                    img_q.put((seg_img, False))
 
+                
+                room = "none" # 0: no-fruit room, 1: fruit room, 2: corridor
                 # for step in tqdm.tqdm(range(self.episode_length[episode])):
                 for step in range(self.episode_length[episode]):
                     # pose = observation[:, -3:]
                     # plt.cla()
                     # plt.show()
+
+                    skip = False
 
                     ch = stdscr.getkey()
                     # print(ch)
@@ -148,15 +156,32 @@ class GoSeekKeyboard(Benchmark):
                         action = 2
                     elif ch == " ":
                         action = 3
+                    elif ch == "0":
+                        room = "non-fruit"
+                        skip = True
+                    elif ch == "1":
+                        room = "fruit"
+                        skip = True
+                    elif ch == "2":
+                        room = "corridor"
+                        skip = True
                     else:
-                        continue
+                        skip = True
 
+
+                    if self.SAVE_OBSERVATIONS:
+                        np.save(os.path.join("/tmp/observations", "obs_%s_%s_%s.npy"%(room, episode, step)), obs)
+
+                    if skip:
+                        continue
+                    
                     obs, reward, done, info = self.env.step(action)
 
 
-                    imgs = np.reshape(obs[:-3], img_shape)
-                    seg_img = cv2.resize(imgs[:, :, 3], (40, 40), interpolation=cv2.INTER_NEAREST)
-                    img_q.put((seg_img, False))
+                    if self.SHOW_MATPLOT:
+                        imgs = np.reshape(obs[:-3], img_shape)
+                        seg_img = cv2.resize(imgs[:, :, 3], (40, 40), interpolation=cv2.INTER_NEAREST)
+                        img_q.put((seg_img, False))
 
                     n_found_targets += info["n_found_targets"]
 
@@ -193,8 +218,10 @@ class GoSeekKeyboard(Benchmark):
                 results["total"][metric] /= len(self.scenes)
 
         finally:
-            img_q.put((None, True))
-            thread.join()
+            if self.SHOW_MATPLOT:
+                img_q.put((None, True))
+                thread.join()
+
             curses.nocbreak()
             stdscr.keypad(False)
             curses.echo()
